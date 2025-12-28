@@ -2,98 +2,103 @@ import streamlit as st
 import sqlite3
 import pandas as pd
 
-# Connect to your SQLite file
-conn = sqlite3.connect("registration_form.sqlite")
+# Connect to your SQLite database (change name if needed)
+DB_NAME = "registration_form.db3"  # or "registration_form.sqlite" if that's your file name
+
+conn = sqlite3.connect(DB_NAME)
 cursor = conn.cursor()
 
-st.title("🏫 Student REgistration system- Student CRUD")
+st.set_page_config(page_title="School Registration System", layout="wide")
+st.title("🏫 School Registration Form System")
 
-tab1, tab2, tab3 = st.tabs(["View Students", "Add Student", "Edit/Delete Student"])
+st.sidebar.header("Options")
+option = st.sidebar.selectbox("Choose action", ["View Students", "Add New Student", "Edit/Delete Student"])
 
-with tab1:
-    st.header("All Students")
-    cursor.execute("SELECT * FROM Student")
-    data = cursor.fetchall()
-    columns = [desc[0] for desc in cursor.description]
-    df = pd.DataFrame(data, columns=columns)
+if option == "View Students":
+    st.header("All Registered Students")
+    df = pd.read_sql_query("SELECT * FROM Student", conn)
     st.dataframe(df, use_container_width=True)
 
-with tab2:
-    st.header("Add New Student")
+elif option == "Add New Student":
+    st.header("Register New Student")
     with st.form("add_form"):
-        name = st.text_input("Name")
-        email = st.text_input("Email")
-        password = st.text_input("Password", type="password")
-        dob = st.date_input("Date of Birth")
-        sex = st.selectbox("Sex", ["Male", "Female", "Other"])
-        phone = st.text_input("Phone")
-        address = st.text_area("Address")
-        submit = st.form_submit_button("Add Student")
+        col1, col2 = st.columns(2)
+        with col1:
+            name = st.text_input("Full Name *")
+            email = st.text_input("Email *")
+            password = st.text_input("Password *", type="password")
+            dob = st.date_input("Date of Birth *")
+        with col2:
+            sex = st.selectbox("Gender *", ["Male", "Female", "Other"])
+            phone = st.text_input("Phone Number")
+            address = st.text_area("Address")
         
-        if submit:
-            if name and email:
+        submitted = st.form_submit_button("Register Student")
+        if submitted:
+            if name and email and password and dob and sex:
                 try:
                     cursor.execute("""
                         INSERT INTO Student (Name, Email, Password, DOB, Sex, Phone, Address)
                         VALUES (?, ?, ?, ?, ?, ?, ?)
                     """, (name, email, password, dob, sex, phone, address))
                     conn.commit()
-                    st.success("Student added successfully!")
+                    st.success("Student registered successfully! 🎉")
                 except Exception as e:
                     st.error(f"Error: {e}")
             else:
-                st.warning("Name and Email are required!")
+                st.warning("Please fill all required fields (*)")
 
-with tab3:
-    st.header("Edit or Delete Student")
+elif option == "Edit/Delete Student":
+    st.header("Manage Existing Students")
     cursor.execute("SELECT Student_ID, Name, Email FROM Student")
     students = cursor.fetchall()
-    student_dict = {f"{row[1]} ({row[2]}) - ID: {row[0]}": row[0] for row in students}
+    student_dict = {f"{name} ({email}) - ID: {id}": id for id, name, email in students}
     
-    selected_student = st.selectbox("Select Student", options=list(student_dict.keys()))
+    selected = st.selectbox("Select student to edit/delete", options=[""] + list(student_dict.keys()))
     
-    if selected_student:
-        student_id = student_dict[selected_student]
-        
+    if selected:
+        student_id = student_dict[selected]
         cursor.execute("SELECT * FROM Student WHERE Student_ID = ?", (student_id,))
-        current = cursor.fetchone()
-        columns = [desc[0] for desc in cursor.description]
-        current_dict = dict(zip(columns, current))
+        student = cursor.fetchone()
+        cols = [desc[0] for desc in cursor.description]
+        data = dict(zip(cols, student))
         
         with st.form("edit_form"):
-            name = st.text_input("Name", value=current_dict["Name"])
-            email = st.text_input("Email", value=current_dict["Email"])
-            password = st.text_input("Password", type="password", value=current_dict["Password"])
-            dob = st.date_input("Date of Birth", value=pd.to_datetime(current_dict["DOB"]))
-            sex = st.selectbox("Sex", ["Male", "Female", "Other"], index=["Male", "Female", "Other"].index(current_dict["Sex"]))
-            phone = st.text_input("Phone", value=current_dict["Phone"] or "")
-            address = st.text_area("Address", value=current_dict["Address"] or "")
-            
             col1, col2 = st.columns(2)
-            update = col1.form_submit_button("Update")
-            delete = col2.form_submit_button("Delete")
+            with col1:
+                new_name = st.text_input("Full Name", value=data["Name"])
+                new_email = st.text_input("Email", value=data["Email"])
+                new_password = st.text_input("Password", type="password", value=data["Password"])
+                new_dob = st.date_input("Date of Birth", value=pd.to_datetime(data["DOB"]))
+            with col2:
+                new_sex = st.selectbox("Gender", ["Male", "Female", "Other"], index=["Male", "Female", "Other"].index(data["Sex"]))
+                new_phone = st.text_input("Phone Number", value=data["Phone"] or "")
+                new_address = st.text_area("Address", value=data["Address"] or "")
+            
+            col_update, col_delete = st.columns(2)
+            update = col_update.form_submit_button("Update Student")
+            delete = col_delete.form_submit_button("Delete Student")
             
             if update:
-                try:
-                    cursor.execute("""
-                        UPDATE Student SET Name=?, Email=?, Password=?, DOB=?, Sex=?, Phone=?, Address=?
-                        WHERE Student_ID=?
-                    """, (name, email, password, dob, sex, phone, address, student_id))
-                    conn.commit()
-                    st.success("Updated!")
-                except Exception as e:
-                    st.error(f"Error: {e}")
+                cursor.execute("""
+                    UPDATE Student SET Name=?, Email=?, Password=?, DOB=?, Sex=?, Phone=?, Address=?
+                    WHERE Student_ID=?
+                """, (new_name, new_email, new_password, new_dob, new_sex, new_phone, new_address, student_id))
+                conn.commit()
+                st.success("Student updated!")
             
             if delete:
-                if st.checkbox("Confirm delete"):
+                if st.checkbox("I confirm I want to delete this student"):
                     cursor.execute("DELETE FROM Student WHERE Student_ID=?", (student_id,))
                     conn.commit()
-                    st.success("Deleted!")
+                    st.success("Student deleted!")
                     st.rerun()
 
-st.sidebar.success("Using school_management.sqlite file")
+st.sidebar.info("Database: registration_form.db")
+st.sidebar.caption("Simple GUI for your school registration system")
 
-
+conn.close()
                     
         
         
+
