@@ -1,31 +1,13 @@
 import streamlit as st
-import mysql.connector
-from mysql.connector import Error
+import sqlite3
 import pandas as pd
 
-# === CHANGE THESE ===
-PASSWORD = "MySQL360."  # Your MySQL password
-DATABASE_NAME = "schoolDB"       # Your schema name
-
-# Connect to MySQL
-try:
-    conn = mysql.connector.connect(
-        host="localhost",
-        user="root",
-        password=PASSWORD,
-        database=DATABASE_NAME
-    )
-    if conn.is_connected():
-        st.success("Connected to MySQL database!")
-except Error as e:
-    st.error(f"Connection failed: {e}")
-    st.stop()
-
+# Connect to your SQLite file
+conn = sqlite3.connect("registration_form.sqlite")
 cursor = conn.cursor()
 
-st.title("🏫 School Management System - Student CRUD")
+st.title("🏫 Student REgistration system- Student CRUD")
 
-# Tabs for different operations
 tab1, tab2, tab3 = st.tabs(["View Students", "Add Student", "Edit/Delete Student"])
 
 with tab1:
@@ -53,11 +35,11 @@ with tab2:
                 try:
                     cursor.execute("""
                         INSERT INTO Student (Name, Email, Password, DOB, Sex, Phone, Address)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
                     """, (name, email, password, dob, sex, phone, address))
                     conn.commit()
                     st.success("Student added successfully!")
-                except Error as e:
+                except Exception as e:
                     st.error(f"Error: {e}")
             else:
                 st.warning("Name and Email are required!")
@@ -68,13 +50,12 @@ with tab3:
     students = cursor.fetchall()
     student_dict = {f"{row[1]} ({row[2]}) - ID: {row[0]}": row[0] for row in students}
     
-    selected_student = st.selectbox("Select Student to Edit/Delete", options=list(student_dict.keys()))
+    selected_student = st.selectbox("Select Student", options=list(student_dict.keys()))
     
     if selected_student:
         student_id = student_dict[selected_student]
         
-        # Fetch current data
-        cursor.execute("SELECT * FROM Student WHERE Student_ID = %s", (student_id,))
+        cursor.execute("SELECT * FROM Student WHERE Student_ID = ?", (student_id,))
         current = cursor.fetchone()
         columns = [desc[0] for desc in cursor.description]
         current_dict = dict(zip(columns, current))
@@ -83,35 +64,36 @@ with tab3:
             name = st.text_input("Name", value=current_dict["Name"])
             email = st.text_input("Email", value=current_dict["Email"])
             password = st.text_input("Password", type="password", value=current_dict["Password"])
-            dob = st.date_input("Date of Birth", value=current_dict["DOB"])
+            dob = st.date_input("Date of Birth", value=pd.to_datetime(current_dict["DOB"]))
             sex = st.selectbox("Sex", ["Male", "Female", "Other"], index=["Male", "Female", "Other"].index(current_dict["Sex"]))
-            phone = st.text_input("Phone", value=current_dict["Phone"])
-            address = st.text_area("Address", value=current_dict["Address"])
+            phone = st.text_input("Phone", value=current_dict["Phone"] or "")
+            address = st.text_area("Address", value=current_dict["Address"] or "")
             
             col1, col2 = st.columns(2)
-            update_btn = col1.form_submit_button("Update Student")
-            delete_btn = col2.form_submit_button("Delete Student")
+            update = col1.form_submit_button("Update")
+            delete = col2.form_submit_button("Delete")
             
-            if update_btn:
+            if update:
                 try:
                     cursor.execute("""
-                        UPDATE Student SET Name=%s, Email=%s, Password=%s, DOB=%s, Sex=%s, Phone=%s, Address=%s
-                        WHERE Student_ID=%s
+                        UPDATE Student SET Name=?, Email=?, Password=?, DOB=?, Sex=?, Phone=?, Address=?
+                        WHERE Student_ID=?
                     """, (name, email, password, dob, sex, phone, address, student_id))
                     conn.commit()
-                    st.success("Student updated!")
-                except Error as e:
+                    st.success("Updated!")
+                except Exception as e:
                     st.error(f"Error: {e}")
             
-            if delete_btn:
-                if st.checkbox("Confirm deletion"):
-                    try:
-                        cursor.execute("DELETE FROM Student WHERE Student_ID=%s", (student_id,))
-                        conn.commit()
-                        st.success("Student deleted!")
-                    except Error as e:
-                        st.error(f"Error: {e}")
+            if delete:
+                if st.checkbox("Confirm delete"):
+                    cursor.execute("DELETE FROM Student WHERE Student_ID=?", (student_id,))
+                    conn.commit()
+                    st.success("Deleted!")
+                    st.rerun()
 
-# Footer
-st.sidebar.info("Simple Streamlit GUI for your School DB")
-st.sidebar.caption("Made quickly for your tutor submission 🚀")
+st.sidebar.success("Using school_management.sqlite file")
+
+
+                    
+        
+        
